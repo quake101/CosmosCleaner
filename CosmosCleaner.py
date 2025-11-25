@@ -436,6 +436,10 @@ class MainUI(QMainWindow):
         self.results_table.setAlternatingRowColors(True)
         self.results_table.setSortingEnabled(True)
 
+        # Enable context menu on table
+        self.results_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.results_table.customContextMenuRequested.connect(self.show_context_menu)
+
         # Add widgets to main layout
         main_layout.addLayout(folder_layout)
         main_layout.addWidget(self.scan_button)
@@ -589,6 +593,90 @@ class MainUI(QMainWindow):
             checkbox = self.results_table.cellWidget(row, 0)
             if checkbox and isinstance(checkbox, QCheckBox):
                 checkbox.setChecked(checked)
+
+    def show_context_menu(self, position):
+        """Show context menu for table rows"""
+        # Get the item at the position
+        item = self.results_table.itemAt(position)
+        if not item:
+            return
+
+        # Get the row
+        row = item.row()
+
+        # Create context menu
+        menu = QMenu(self)
+
+        # Add actions
+        open_location_action = QAction("Open Location", self)
+        open_location_action.triggered.connect(lambda: self.open_folder_location(row))
+        menu.addAction(open_location_action)
+
+        delete_action = QAction("Delete", self)
+        delete_action.triggered.connect(lambda: self.delete_single_folder(row))
+        menu.addAction(delete_action)
+
+        menu.addSeparator()
+
+        copy_path_action = QAction("Copy Path", self)
+        copy_path_action.triggered.connect(lambda: self.copy_folder_path(row))
+        menu.addAction(copy_path_action)
+
+        # Show menu at cursor position
+        menu.exec(self.results_table.viewport().mapToGlobal(position))
+
+    def open_folder_location(self, row):
+        """Open the folder location in file explorer"""
+        folder_path = self.results_table.item(row, 1).text()
+        if os.path.exists(folder_path):
+            # Open the parent folder and select the item
+            if sys.platform == 'win32':
+                os.startfile(os.path.dirname(folder_path))
+            elif sys.platform == 'darwin':  # macOS
+                os.system(f'open "{os.path.dirname(folder_path)}"')
+            else:  # Linux
+                os.system(f'xdg-open "{os.path.dirname(folder_path)}"')
+        else:
+            QMessageBox.warning(self, "Folder Not Found", f"The folder no longer exists:\n{folder_path}")
+
+    def copy_folder_path(self, row):
+        """Copy the folder path to clipboard"""
+        folder_path = self.results_table.item(row, 1).text()
+        clipboard = QApplication.clipboard()
+        clipboard.setText(folder_path)
+        self.status_label.setText(f"Copied path to clipboard: {folder_path}")
+
+    def delete_single_folder(self, row):
+        """Delete a single folder from the context menu"""
+        folder_path = self.results_table.item(row, 1).text()
+
+        # Confirm deletion
+        reply = QMessageBox.question(
+            self,
+            "Confirm Deletion",
+            f"Are you sure you want to permanently delete this folder?\n\n{folder_path}\n\nThis action cannot be undone!",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        # Create progress dialog for single deletion
+        self.progress_dialog = CleanupProgressDialog(1, self)
+        self.progress_dialog.show()
+
+        # Disable UI during cleanup
+        self.clean_button.setEnabled(False)
+        self.scan_button.setEnabled(False)
+        self.browse_button.setEnabled(False)
+        self.select_all_checkbox.setEnabled(False)
+
+        # Start deletion thread
+        self.deleter_thread = FolderDeleter([(row, folder_path)])
+        self.deleter_thread.progress.connect(self.on_delete_progress)
+        self.deleter_thread.finished.connect(self.on_delete_finished)
+        self.deleter_thread.start()
 
     def clean_selected_folders(self):
         """Delete selected folders using a background thread"""
