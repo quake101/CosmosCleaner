@@ -639,8 +639,10 @@ class MainUI(QMainWindow):
         """Open the about dialog"""
         about_box = QMessageBox(self)
         about_box.setWindowTitle("About Cosmos Cleaner")
+        about_box.setTextFormat(Qt.RichText)
         about_box.setText("<h2>Cosmos Cleaner</h2>"
-                          "<p>A simple tool for scanning and cleaning up processing data folders.</p>")
+                          "<p>A simple tool for scanning and cleaning up processing data folders.</p>"
+                          "<p><a href='https://github.com/quake101/CosmosCleaner'>github.com/quake101/CosmosCleaner</a></p>")
 
         # Set icon for the about dialog
         icon_path = os.path.join(os.path.dirname(__file__), 'images', 'CosmosCleaner.png')
