@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QHBoxLayout, QPushButton, QLineEdit, QTableWidget,
                                QTableWidgetItem, QFileDialog, QLabel, QHeaderView,
                                QMessageBox, QCheckBox, QDialog, QListWidget,
-                               QInputDialog, QMenu)
+                               QInputDialog, QMenu, QTextEdit)
 from PySide6.QtCore import Qt, QThread, Signal, QSettings, QTimer
 from PySide6.QtGui import QAction, QIcon
 
@@ -144,6 +144,80 @@ class FolderScanner(QThread):
         self.should_stop = True
 
 
+class FolderDeleter(QThread):
+    """Thread to delete folders without blocking the UI"""
+    progress = Signal(str, bool, str)  # folder_path, success, error_message
+    finished = Signal(list, list)  # deleted_rows, failed_deletions [(path, error), ...]
+
+    def __init__(self, folders_to_delete):
+        super().__init__()
+        self.folders_to_delete = folders_to_delete  # List of (row, folder_path) tuples
+        self.deleted_rows = []
+        self.failed_deletions = []
+
+    def run(self):
+        """Delete folders and track results"""
+        for row, folder_path in self.folders_to_delete:
+            try:
+                shutil.rmtree(folder_path)
+                self.deleted_rows.append(row)
+                self.progress.emit(folder_path, True, "")
+            except Exception as e:
+                error_msg = str(e)
+                self.failed_deletions.append((folder_path, error_msg))
+                self.progress.emit(folder_path, False, error_msg)
+
+        self.finished.emit(self.deleted_rows, self.failed_deletions)
+
+
+class CleanupProgressDialog(QDialog):
+    """Dialog to show cleanup progress"""
+    def __init__(self, total_folders, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Cleaning Folders")
+        self.setModal(True)
+        self.setMinimumWidth(600)
+        self.setMinimumHeight(200)
+        self.total_folders = total_folders
+        self.completed = 0
+        self.init_ui()
+
+    def init_ui(self):
+        """Initialize the progress dialog UI"""
+        layout = QVBoxLayout(self)
+
+        # Progress label
+        self.progress_label = QLabel(f"Deleting folders: 0 / {self.total_folders}")
+        layout.addWidget(self.progress_label)
+
+        # Current folder label
+        self.current_label = QLabel("Preparing...")
+        self.current_label.setWordWrap(True)
+        layout.addWidget(self.current_label)
+
+        # Status text area
+        self.status_text = QTextEdit()
+        self.status_text.setReadOnly(True)
+        layout.addWidget(self.status_text)
+
+    def update_progress(self, folder_path, success, error_message):
+        """Update progress with folder deletion result"""
+        self.completed += 1
+        self.progress_label.setText(f"Deleting folders: {self.completed} / {self.total_folders}")
+
+        if success:
+            self.status_text.append(f"Deleted: {folder_path}")
+            self.current_label.setText(f"Successfully deleted: {folder_path}")
+        else:
+            self.status_text.append(f"Failed: {folder_path}\n  Error: {error_message}")
+            self.current_label.setText(f"Failed to delete: {folder_path}")
+
+    def cleanup_complete(self):
+        """Mark cleanup as complete"""
+        self.current_label.setText("Cleanup complete!")
+        self.progress_label.setText(f"Completed: {self.completed} / {self.total_folders}")
+
+
 class OptionsDialog(QDialog):
     """Dialog for managing target folder names"""
     def __init__(self, current_folders, parent=None):
@@ -260,6 +334,7 @@ class MainUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.scanner_thread = None
+        self.deleter_thread = None
         self.settings = QSettings('CosmosCleaner', 'CosmosCleaner')
         self.scan_dot_count = 0  # For animated scanning dots
         self.scan_folder_count = 0  # Track number of folders found
@@ -516,7 +591,7 @@ class MainUI(QMainWindow):
                 checkbox.setChecked(checked)
 
     def clean_selected_folders(self):
-        """Delete selected folders"""
+        """Delete selected folders using a background thread"""
         # Collect selected folders
         selected_folders = []
         for row in range(self.results_table.rowCount()):
@@ -542,16 +617,30 @@ class MainUI(QMainWindow):
         if reply != QMessageBox.Yes:
             return
 
-        # Delete folders and track results
-        deleted_rows = []
-        failed_deletions = []
+        # Disable UI during cleanup
+        self.clean_button.setEnabled(False)
+        self.scan_button.setEnabled(False)
+        self.browse_button.setEnabled(False)
+        self.select_all_checkbox.setEnabled(False)
 
-        for row, folder_path in selected_folders:
-            try:
-                shutil.rmtree(folder_path)
-                deleted_rows.append(row)
-            except Exception as e:
-                failed_deletions.append((folder_path, str(e)))
+        # Create and show progress dialog
+        self.progress_dialog = CleanupProgressDialog(folder_count, self)
+        self.progress_dialog.show()
+
+        # Start deletion thread
+        self.deleter_thread = FolderDeleter(selected_folders)
+        self.deleter_thread.progress.connect(self.on_delete_progress)
+        self.deleter_thread.finished.connect(self.on_delete_finished)
+        self.deleter_thread.start()
+
+    def on_delete_progress(self, folder_path, success, error_message):
+        """Handle progress updates from deletion thread"""
+        self.progress_dialog.update_progress(folder_path, success, error_message)
+
+    def on_delete_finished(self, deleted_rows, failed_deletions):
+        """Handle deletion completion"""
+        # Mark progress dialog as complete
+        self.progress_dialog.cleanup_complete()
 
         # Remove deleted folders from table (in reverse order to maintain indices)
         for row in sorted(deleted_rows, reverse=True):
@@ -559,6 +648,11 @@ class MainUI(QMainWindow):
 
         # Update select all checkbox state
         self.select_all_checkbox.setChecked(False)
+
+        # Re-enable UI elements
+        self.scan_button.setEnabled(True)
+        self.browse_button.setEnabled(True)
+        self.select_all_checkbox.setEnabled(True)
 
         # Update status and show results
         remaining_count = self.results_table.rowCount()
@@ -576,10 +670,16 @@ class MainUI(QMainWindow):
             self.status_label.setText(
                 f"Cleaned {len(deleted_rows)} folder(s). Remaining: {remaining_count} folder(s) - Total size: {total_size_formatted}"
             )
+            self.clean_button.setEnabled(True)
 
-        # Show error message if any deletions failed
+        # Clean up thread
+        if self.deleter_thread:
+            self.deleter_thread.wait()
+            self.deleter_thread = None
+
+        # Show error summary if any deletions failed
         if failed_deletions:
-            error_msg = "The following folders could not be deleted:\n\n"
+            error_msg = "Some folders could not be deleted:\n\n"
             for folder_path, error in failed_deletions[:5]:  # Show first 5 errors
                 error_msg += f"{folder_path}\n  Error: {error}\n\n"
             if len(failed_deletions) > 5:
@@ -607,6 +707,20 @@ class MainUI(QMainWindow):
             if reply == QMessageBox.Yes:
                 self.scanner_thread.stop()
                 self.scanner_thread.wait()
+                event.accept()
+            else:
+                event.ignore()
+        elif self.deleter_thread and self.deleter_thread.isRunning():
+            reply = QMessageBox.question(
+                self,
+                "Cleanup in Progress",
+                "A cleanup operation is currently running. Do you want to wait for it to finish before exiting?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+
+            if reply == QMessageBox.Yes:
+                self.deleter_thread.wait()
                 event.accept()
             else:
                 event.ignore()
