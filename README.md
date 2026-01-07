@@ -28,6 +28,20 @@ You can customize this list through the Options menu.
 
 ## Installation
 
+### Option 1: Download Pre-built Executable (Recommended)
+
+Download the latest executable for your platform from the [Releases](https://github.com/quake101/CosmosCleaner/releases) page:
+
+- **Windows**: `CosmosCleaner.exe` - Double-click to run
+- **macOS**: `CosmosCleaner-Mac` - Right-click and select "Open" the first time to bypass Gatekeeper
+- **Linux**: `CosmosCleaner-Linux` - Run `chmod +x CosmosCleaner-Linux` then `./CosmosCleaner-Linux`
+
+No Python installation required!
+
+### Option 2: Run from Source
+
+If you prefer to run from source or want to contribute to development:
+
 1. Clone this repository:
 ```bash
 git clone https://github.com/quake101/CosmosCleaner.git
@@ -39,12 +53,16 @@ cd CosmosCleaner
 pip install -r requirements.txt
 ```
 
-## Usage
-
-Run the application:
+3. Run the application:
 ```bash
 python CosmosCleaner.py
 ```
+
+**Requirements for running from source:**
+- Python 3.8 or higher
+- PySide6 6.5.0 or higher
+
+## Usage
 
 1. Click **Browse** to select your root astrophotography folder
 2. Click **Start Scan** to search for target folders
@@ -52,11 +70,6 @@ python CosmosCleaner.py
 4. Click **Clean Selected Folders** to permanently delete them
 
 **Warning:** Deletion is permanent and cannot be undone!
-
-## Requirements
-
-- Python 3.8 or higher
-- PySide6 6.5.0 or higher
 
 ## License
 
