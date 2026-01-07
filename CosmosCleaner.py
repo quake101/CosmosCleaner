@@ -397,8 +397,10 @@ class MainUI(QMainWindow):
         folder_label = QLabel("Root Folder:")
         self.folder_input = QLineEdit()
         self.folder_input.setPlaceholderText("Select a folder to scan...")
+        self.folder_input.setToolTip("Enter or browse to the root folder to scan for cleanup")
         self.browse_button = QPushButton("Browse")
         self.browse_button.clicked.connect(self.browse_folder)
+        self.browse_button.setToolTip("Browse for a folder to scan")
 
         folder_layout.addWidget(folder_label)
         folder_layout.addWidget(self.folder_input)
@@ -408,6 +410,7 @@ class MainUI(QMainWindow):
         self.scan_button = QPushButton("Start Scan")
         self.scan_button.clicked.connect(self.start_scan)
         self.scan_button.setEnabled(False)
+        self.scan_button.setToolTip("Scan the selected folder for target folders to clean")
 
         # Status label
         self.status_label = QLabel("Select a folder to begin")
@@ -417,10 +420,26 @@ class MainUI(QMainWindow):
         self.select_all_checkbox = QCheckBox("Select All")
         self.select_all_checkbox.toggled.connect(self.on_select_all_changed)
         self.select_all_checkbox.setEnabled(False)
+        self.select_all_checkbox.setToolTip("Select or deselect all folders in the results")
         self.clean_button = QPushButton("Clean Selected Folders")
         self.clean_button.clicked.connect(self.clean_selected_folders)
         self.clean_button.setEnabled(False)
-        self.clean_button.setStyleSheet("QPushButton { background-color: #d32f2f; color: white; font-weight: bold; }")
+        self.clean_button.setToolTip("Permanently delete the selected folders (cannot be undone)")
+        self.clean_button.setStyleSheet("""
+            QPushButton {
+                background-color: #d32f2f;
+                color: white;
+                font-weight: bold;
+                padding: 5px 10px;
+            }
+            QPushButton:disabled {
+                background-color: #cccccc;
+                color: #666666;
+            }
+            QPushButton:hover:!disabled {
+                background-color: #b71c1c;
+            }
+        """)
 
         clean_layout.addWidget(self.select_all_checkbox)
         clean_layout.addStretch()
@@ -520,6 +539,7 @@ class MainUI(QMainWindow):
         # Checkbox
         checkbox = QCheckBox()
         checkbox.setStyleSheet("QCheckBox { margin-left: 5px; }")
+        checkbox.toggled.connect(self.update_clean_button_state)
         self.results_table.setCellWidget(row, 0, checkbox)
 
         # Folder path
@@ -575,7 +595,7 @@ class MainUI(QMainWindow):
                 f"Scan complete. Found {row_count} folder(s) - Total size: {total_size_formatted}"
             )
             self.select_all_checkbox.setEnabled(True)
-            self.clean_button.setEnabled(True)
+            self.clean_button.setEnabled(False)  # Keep disabled until folders are selected
 
         # Enable sorting after scan is complete
         self.results_table.setSortingEnabled(True)
@@ -587,12 +607,23 @@ class MainUI(QMainWindow):
             self.scanner_thread.wait()
             self.scanner_thread = None
 
+    def update_clean_button_state(self):
+        """Enable/disable clean button based on whether any folders are selected"""
+        has_selection = False
+        for row in range(self.results_table.rowCount()):
+            checkbox = self.results_table.cellWidget(row, 0)
+            if checkbox and isinstance(checkbox, QCheckBox) and checkbox.isChecked():
+                has_selection = True
+                break
+        self.clean_button.setEnabled(has_selection)
+
     def on_select_all_changed(self, checked):
         """Handle select all checkbox state change"""
         for row in range(self.results_table.rowCount()):
             checkbox = self.results_table.cellWidget(row, 0)
             if checkbox and isinstance(checkbox, QCheckBox):
                 checkbox.setChecked(checked)
+        self.update_clean_button_state()
 
     def show_context_menu(self, position):
         """Show context menu for table rows"""
@@ -758,7 +789,7 @@ class MainUI(QMainWindow):
             self.status_label.setText(
                 f"Cleaned {len(deleted_rows)} folder(s). Remaining: {remaining_count} folder(s) - Total size: {total_size_formatted}"
             )
-            self.clean_button.setEnabled(True)
+            self.update_clean_button_state()  # Update based on current selection
 
         # Clean up thread
         if self.deleter_thread:
