@@ -53,11 +53,13 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         pyinstaller --onefile --windowed --name CosmosCleaner --icon=images/CosmosCleaner.png --add-data "images:images" CosmosCleaner.py
+        mv dist/CosmosCleaner dist/CosmosCleaner-Linux
 
     - name: Build executable (macOS)
       if: matrix.os == 'macos-latest'
       run: |
         pyinstaller --onefile --windowed --name CosmosCleaner --icon=images/CosmosCleaner.png --add-data "images:images" CosmosCleaner.py
+        mv dist/CosmosCleaner dist/CosmosCleaner-Mac
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
