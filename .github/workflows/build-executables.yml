@@ -24,10 +24,10 @@ jobs:
             build_name: CosmosCleaner.exe
           - os: ubuntu-latest
             artifact_name: CosmosCleaner-Linux
-            build_name: CosmosCleaner
+            build_name: CosmosCleaner-Linux
           - os: macos-latest
             artifact_name: CosmosCleaner-macOS
-            build_name: CosmosCleaner
+            build_name: CosmosCleaner-Mac
 
     steps:
     - name: Checkout code
@@ -85,8 +85,8 @@ jobs:
       with:
         files: |
           artifacts/CosmosCleaner-Windows.exe/CosmosCleaner.exe
-          artifacts/CosmosCleaner-Linux/CosmosCleaner
-          artifacts/CosmosCleaner-macOS/CosmosCleaner
+          artifacts/CosmosCleaner-Linux/CosmosCleaner-Linux
+          artifacts/CosmosCleaner-macOS/CosmosCleaner-Mac
         draft: false
         prerelease: false
       env:
